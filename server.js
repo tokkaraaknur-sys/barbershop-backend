@@ -1,17 +1,9 @@
-// ВЕРСИЯ 3: добавлен CORS (разрешение сайту обращаться к серверу)
-// и поле service (какая услуга выбрана)
-
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
-// Новый импорт — библиотека для разрешения кросс-доменных запросов
 const cors = require('cors');
 
 const app = express();
 app.use(express.json());
-
-// Разрешаем ЛЮБОМУ сайту обращаться к этому серверу.
-// Для учебного проекта это нормально. В реальном продукте
-// тут обычно указывают конкретный адрес твоего сайта.
 app.use(cors());
 
 const supabaseUrl = 'https://ognvdhifpkybcuresxpq.supabase.co';
@@ -23,7 +15,8 @@ app.get('/bookings', async (req, res) => {
   const { data, error } = await supabase
     .from('bookings')
     .select('*')
-    .order('date', { ascending: true }); // сортируем по дате
+    .order('date', { ascending: true })
+    .order('time', { ascending: true });
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
@@ -31,7 +24,6 @@ app.get('/bookings', async (req, res) => {
 
 // === Создать новую запись ===
 app.post('/bookings', async (req, res) => {
-  // Теперь принимаем ещё и service (название услуги)
   const { name, phone, date, time, service } = req.body;
 
   const { data: existing, error: checkError } = await supabase
@@ -48,17 +40,32 @@ app.post('/bookings', async (req, res) => {
 
   const { data, error } = await supabase
     .from('bookings')
-    .insert([{ name, phone, date, time, service }])
+    .insert([{ name, phone, date, time, service, status: 'pending' }])
     .select();
 
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json(data[0]);
 });
 
-// === Отменить запись по id ===
-// Новый маршрут — раньше его не было
+// === НОВОЕ: изменить статус записи (подтвердить/отменить) ===
+// PATCH используется, когда меняем только часть записи, а не всю целиком
+app.patch('/bookings/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // ожидаем 'confirmed' или 'cancelled'
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({ status })
+    .eq('id', id)
+    .select();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data[0]);
+});
+
+// === Полностью удалить запись ===
 app.delete('/bookings/:id', async (req, res) => {
-  const { id } = req.params; // берём id прямо из адреса, например /bookings/5
+  const { id } = req.params;
 
   const { error } = await supabase
     .from('bookings')
@@ -66,9 +73,9 @@ app.delete('/bookings/:id', async (req, res) => {
     .eq('id', id);
 
   if (error) return res.status(500).json({ error: error.message });
-  res.status(200).json({ message: 'Запись отменена' });
+  res.status(200).json({ message: 'Запись удалена' });
 });
 
-app.listen(3000, () => {
-  console.log('Сервер запущен: http://localhost:3000');
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Сервер запущен');
 });
